@@ -130,9 +130,13 @@ app.get('/api/players', async (req, res) => {
         0
       )::int AS winrate,
       (SELECT ROUND(AVG(lp_change))::int
-         FROM matches WHERE player_id = players.id AND lp_change > 0) AS avg_lp_gain,
+         FROM (SELECT lp_change FROM matches
+               WHERE player_id = players.id AND lp_change > 0
+               ORDER BY played_at DESC LIMIT 20) t) AS avg_lp_gain,
       (SELECT ROUND(AVG(ABS(lp_change)))::int
-         FROM matches WHERE player_id = players.id AND lp_change < 0) AS avg_lp_loss
+         FROM (SELECT lp_change FROM matches
+               WHERE player_id = players.id AND lp_change < 0
+               ORDER BY played_at DESC LIMIT 20) t) AS avg_lp_loss
     FROM players
     WHERE name ILIKE $1 OR display_name ILIKE $1
     ORDER BY ${buildOrderBy(sort)}

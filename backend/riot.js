@@ -398,11 +398,20 @@ async function syncTrackedPlayers(pool) {
       const pendingLp      = Number(player.pending_lp || 0);
       const effectiveDelta = lpDelta + pendingLp;
 
+      // Attribution du lp_change par partie :
+      // - Cas pur pending (lpDelta=0) : on utilise pendingLp → correct
+      // - Cas normal (pendingLp=0)    : on utilise lpDelta   → correct
+      // - Cas mixte (les deux ≠ 0)   : on n'utilise QUE lpDelta pour éviter
+      //   de contaminer les nouvelles parties avec le LP en attente des anciennes
+      const deltaForAttribution = (lpDelta !== 0 && pendingLp !== 0)
+        ? lpDelta
+        : effectiveDelta;
+
       // Optimisation taux limite : ne chercher les matchs que si le LP a changé
       // ou s'il reste un delta en attente (évite 1 appel API inutile par joueur par sync)
       let added = 0;
       if (effectiveDelta !== 0) {
-        added = await upsertPlayerMatches(pool, player.id, puuid, effectiveDelta);
+        added = await upsertPlayerMatches(pool, player.id, puuid, deltaForAttribution);
       }
 
       // Si aucun nouveau match trouvé ET qu'on a détecté un changement LP :

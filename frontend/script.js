@@ -37,6 +37,24 @@ function calcLPT(player) {
   return base + div + Number(player.lp);
 }
 
+function lptToRankLabel(lpt) {
+  const orderedTiers = ['IRON','BRONZE','SILVER','GOLD','PLATINUM','EMERALD','DIAMOND'];
+  const divs = ['IV','III','II','I'];
+  if (lpt >= 2800) return 'Master+';
+  let tier = 'IRON';
+  for (const t of orderedTiers) {
+    if ((TIER_BASE[t] ?? 0) <= lpt) tier = t;
+  }
+  const base   = TIER_BASE[tier] ?? 0;
+  const offset = lpt - base;
+  let div = 'IV';
+  for (const d of divs) {
+    if ((DIV_OFFSET[d] ?? 0) <= offset) div = d;
+  }
+  const tierInfo = TIERS[tier] || { label: tier };
+  return `${tierInfo.label} ${div}`;
+}
+
 
 
 const state = {
@@ -198,7 +216,7 @@ function renderPlayers(list) {
       </td>
       <td class="lp-value">${Number(player.lp).toLocaleString()} LP</td>
       <td class="lpt-value">${calcLPT(player).toLocaleString()}</td>
-      <td>${lpPerGameHtml}</td>
+      <td class="delta-cell">${lpPerGameHtml}</td>
       <td class="games-value">${player.wins + player.losses}</td>
       <td class="wl-cell">
         <span class="wl-w">${player.wins}V</span>
@@ -1126,7 +1144,7 @@ function renderLpChart(mode, lpData) {
           bodyColor: '#6880a0', borderColor: '#263650', borderWidth: 1,
           callbacks: {
             title: (ctx) => byDay ? ctx[0].label : `Partie ${ctx[0].label}`,
-            label: (ctx) => ctx.raw != null ? ` ${ctx.dataset.label}: ${ctx.raw} LPT` : null,
+            label: (ctx) => ctx.raw != null ? ` ${ctx.dataset.label}: ${byDay ? `${ctx.raw} LPT` : `${lptToRankLabel(ctx.raw)} (${ctx.raw} LPT)`}` : null,
           },
         },
       },
@@ -1136,7 +1154,7 @@ function renderLpChart(mode, lpData) {
           grid: { color: '#141c2e' },
         },
         y: {
-          ticks: { color: '#6880a0', font: { family: "'Barlow', sans-serif", size: 11 }, callback: (v) => `${v}` },
+          ticks: { color: '#6880a0', font: { family: "'Barlow', sans-serif", size: 11 }, callback: (v) => byDay ? `${v}` : lptToRankLabel(v) },
           grid: { color: '#141c2e' },
         },
       },
@@ -1444,6 +1462,7 @@ function champImgUrl(name) {
 
 document.addEventListener('DOMContentLoaded', async () => {
   initEvents();
+  initStreakToggle();
   await loadDDVersion(); // attendre le mapping de champions avant de rendre le tableau
   loadTeams();
   loadPlayers();
@@ -1451,6 +1470,27 @@ document.addEventListener('DOMContentLoaded', async () => {
   setInterval(loadStatus, 60_000);
   setInterval(loadLiveGames, 70_000); // légèrement décalé après le sync backend (60s)
 });
+
+/* ============================================================
+   STREAK COLUMN TOGGLE
+   ============================================================ */
+
+function initStreakToggle() {
+  const btn   = document.getElementById('streakToggleBtn');
+  const table = document.getElementById('leaderboard');
+  if (!btn || !table) return;
+
+  const hidden = localStorage.getItem('streakHidden') === '1';
+  if (hidden) table.classList.add('streak-col-hidden');
+  btn.textContent = hidden ? '👁‍🗨' : '👁';
+
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isHidden = table.classList.toggle('streak-col-hidden');
+    btn.textContent = isHidden ? '👁‍🗨' : '👁';
+    localStorage.setItem('streakHidden', isHidden ? '1' : '0');
+  });
+}
 
 async function loadStatus() {
   try {

@@ -56,6 +56,8 @@
 
 html { scroll-behavior: smooth; }
 
+html { overflow-x: hidden; }
+
 body {
   background-color: var(--bg-base);
   color: var(--text-primary);
@@ -480,6 +482,7 @@ body {
 
 .leaderboard {
   width: 100%;
+  min-width: 900px;
   border-collapse: collapse;
 }
 
@@ -1218,6 +1221,48 @@ body {
 
 /* ---- Streak column ---- */
 .col-streak  { width: 200px; text-align: center; }
+
+.streak-toggle-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 11px;
+  opacity: 0;
+  margin-left: 5px;
+  padding: 1px 3px;
+  border-radius: 3px;
+  transition: opacity 0.2s;
+  vertical-align: middle;
+  line-height: 1;
+  color: var(--text-muted);
+}
+.col-streak:hover .streak-toggle-btn {
+  opacity: 0.4;
+}
+.streak-toggle-btn:hover {
+  opacity: 1 !important;
+  background: rgba(255,255,255,0.07);
+}
+
+.streak-col-hidden .streak-cell {
+  display: none;
+}
+
+.streak-col-hidden .col-streak {
+  width: 28px !important;
+  min-width: 28px !important;
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+.streak-col-hidden .streak-header-text {
+  display: none;
+}
+
+.streak-col-hidden .streak-toggle-btn {
+  opacity: 0.5 !important;
+  margin-left: 0 !important;
+}
 .streak-cell { text-align: center; padding: 4px 8px; }
 
 .streak-loading { color: var(--text-muted); font-size: 12px; }
@@ -1440,10 +1485,6 @@ tr.row-team-gold td:first-child  { border-left: 3px solid rgba(200,144,48,0.7); 
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
 /* ---- Responsive ---- */
-@media (max-width: 960px) {
-  .col-wl, .col-delta, .col-account { display: none; }
-}
-
 @media (max-width: 800px) {
   .navbar {
     height: auto;
@@ -1454,15 +1495,11 @@ tr.row-team-gold td:first-child  { border-left: 3px solid rgba(200,144,48,0.7); 
   }
   .nav-links { flex: none; }
   .nav-logo  { order: -1; width: 100%; justify-content: center; }
-  .col-lpt, .col-team { display: none; }
 }
 
 /* ── 640 px — tablet portrait ───────────────────────────── */
 @media (max-width: 640px) {
-  .col-streak, .col-live, .col-games { display: none; }
-
   .container { padding: 14px 12px 60px; }
-
   .sort-btn { min-width: 72px; padding: 6px 10px; }
 }
 
@@ -1527,8 +1564,6 @@ tr.row-team-gold td:first-child  { border-left: 3px solid rgba(200,144,48,0.7); 
   /* Container */
   .container { padding: 10px 8px 56px; }
 
-  /* Hide winrate column to free space */
-  .col-wr { display: none; }
   /* Narrow tier column */
   .col-tier { width: 120px; }
 
