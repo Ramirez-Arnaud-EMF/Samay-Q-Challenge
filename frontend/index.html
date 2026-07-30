@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SoloQ Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css?v=3" />
+</head>
+<body>
+
+  <!-- ======== BACKGROUND EFFECTS ======== -->
+  <div class="bg-effects" aria-hidden="true">
+    <div class="bg-glow bg-glow-red"></div>
+    <div class="bg-glow bg-glow-blue"></div>
+    <div class="bg-beam bg-beam-1"></div>
+    <div class="bg-beam bg-beam-2"></div>
+    <div class="bg-beam bg-beam-3"></div>
+  </div>
+
+  <!-- ======== NAVBAR ======== -->
+  <header class="header">
+    <nav class="navbar">
+      <div class="nav-links nav-left">
+        <a class="nav-item nav-active" href="#" data-tab="classement">
+          <span class="nav-fr">Classement</span>
+        </a>
+        <a class="nav-item" href="#" data-tab="historique">
+          <span class="nav-fr">Historique</span>
+        </a>
+        <a class="nav-item" href="#" data-tab="stats">
+          <span class="nav-fr">Statistiques</span>
+        </a>
+      </div>
+
+      <div class="nav-logo">
+        <span class="logo-emblem">⚔</span>
+        <div class="logo-text">
+          <span class="logo-top">SMC</span>
+          <span class="logo-main">Challenge</span>
+        </div>
+      </div>
+
+      <div class="nav-links nav-right">
+        <div class="nav-sync">
+          <span id="lastSyncLabel" class="nav-fr">Chargement…</span>
+        </div>
+        <button class="nav-add-btn" id="addPlayerBtn" hidden>
+          <span class="btn-fr">+ Ajouter</span>
+        </button>
+        <button class="nav-admin-btn" id="adminBtn">
+          <span class="btn-fr" id="adminBtnLabel">⚙ Admin</span>
+        </button>
+        <!-- Dropdown admin (visible uniquement quand connecté) -->
+        <div class="admin-dropdown" id="adminDropdown" hidden>
+          <button class="admin-dd-item" id="adminTeamsBtn">🏷️ Gérer les équipes</button>
+          <div class="admin-dd-sep"></div>
+          <button class="admin-dd-item admin-dd-logout" id="adminLogoutBtn">🚪 Déconnexion</button>
+        </div>
+      </div>
+    </nav>
+  </header>
+
+  <!-- ======== MAIN ======== -->
+  <main class="container">
+
+    <div id="tab-classement" class="tab-panel">
+
+    <!-- Controls -->
+    <div class="controls">
+      <div class="search-wrapper">
+        <input
+          type="text"
+          id="searchInput"
+          class="search-input"
+          placeholder="CHERCHER"
+          autocomplete="off"
+        />
+        <span class="search-icon">🔍</span>
+      </div>
+
+      <div class="sort-buttons">
+        <button class="sort-btn active" data-sort="lp">
+          <span class="btn-fr">Classement</span>
+        </button>
+        <button class="sort-btn" data-sort="winrate">
+          <span class="btn-fr">Winrate</span>
+        </button>
+        <button class="sort-btn" data-sort="wins">
+          <span class="btn-fr">Victoires</span>
+        </button>
+        <button class="sort-btn" data-sort="games">
+          <span class="btn-fr">Parties</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ======== LEADERBOARD ======== -->
+    <div class="leaderboard-wrapper">
+      <table class="leaderboard" id="leaderboard">
+        <thead>
+          <tr>
+            <th class="col-rank">#</th>
+            <th class="col-name">PLAYER</th>
+            <th class="col-account">COMPTE</th>
+            <th class="col-tier">ELO</th>
+            <th class="col-lp">LP</th>
+            <th class="col-lpt">LPT</th>
+            <th class="col-delta">+/- LPS</th>
+            <th class="col-games">GAME</th>
+            <th class="col-wl">V / D</th>
+            <th class="col-wr">WR</th>
+            <th class="col-team">ÉQUIPE</th>
+            <th class="col-live">EN JEU</th>
+          </tr>
+        </thead>
+        <tbody id="leaderboardBody">
+          <!-- Rows injected by script.js -->
+        </tbody>
+      </table>
+
+      <div class="empty-state" id="emptyState" hidden>
+        <span class="empty-icon">🔎</span>
+        <p>Aucun joueur trouvé.</p>
+      </div>
+    </div>
+
+    </div><!-- /tab-classement -->
+
+    <!-- ======== HISTORIQUE TAB ======== -->
+    <div id="tab-historique" class="tab-panel" hidden>
+      <div id="historyTabContent" class="history-tab-wrap">
+        <div style="text-align:center;padding:64px;color:var(--text-muted)">Chargement…</div>
+      </div>
+    </div>
+
+    <!-- ======== STATS TAB ======== -->
+    <div id="tab-stats" class="tab-panel" hidden>
+      <div id="statsContent" class="stats-content-wrap">
+        <div style="text-align:center;padding:64px;color:var(--text-muted)">Chargement…</div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ======== PLAYER MODAL ======== -->
+  <div class="modal-overlay" id="modalOverlay" hidden>
+    <div class="modal" id="modal" role="dialog" aria-modal="true">
+      <button class="modal-close" id="modalClose" aria-label="Fermer">✕</button>
+
+      <!-- Player header -->
+      <div class="modal-header">
+        <div class="modal-rank-badge" id="modalRankBadge"></div>
+        <div class="modal-info">
+          <h2 class="modal-name" id="modalName"></h2>
+          <p class="modal-tier" id="modalTier"></p>
+          <div class="modal-stats" id="modalStats"></div>
+        </div>
+      </div>
+
+      <!-- Match history -->
+      <div class="modal-history">
+        <h3 class="history-title">Historique — 10 dernières parties</h3>
+        <ul class="history-list" id="historyList"></ul>
+      </div>
+
+      <!-- Footer modal (admin only) -->
+      <div class="modal-footer" id="modalFooter" hidden>
+        <button class="edit-btn" id="modalEditBtn">✏️ Modifier</button>
+        <button class="delete-btn" id="modalDeleteBtn">🗑 Supprimer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======== ADD PLAYER MODAL ======== -->
+  <div class="modal-overlay" id="addModalOverlay" hidden>
+    <div class="modal add-modal" role="dialog" aria-modal="true">
+      <button class="modal-close" id="addModalClose" aria-label="Fermer">✕</button>
+      <h2 class="add-modal-title">Ajouter un joueur</h2>
+
+      <div class="add-form-fields">
+
+        <div class="add-field-group">
+          <label class="add-field-label" for="addDisplayNameInput">
+            Nom affiché <span class="add-required">*</span>
+          </label>
+          <input
+            type="text"
+            id="addDisplayNameInput"
+            class="search-input add-input"
+            placeholder="Ex : Neymar, Lev…"
+            autocomplete="off"
+            maxlength="100"
+          />
+        </div>
+
+        <div class="add-field-group">
+          <label class="add-field-label" for="addRiotIdInput">
+            Compte Riot (Nom#TAG) <span class="add-required">*</span>
+          </label>
+          <input
+            type="text"
+            id="addRiotIdInput"
+            class="search-input add-input add-input-mono"
+            placeholder="pzzzang3#2173"
+            autocomplete="off"
+            spellcheck="false"
+            maxlength="80"
+          />
+        </div>
+
+        <div class="add-field-group">
+          <label class="add-field-label" for="addProfileUrlInput">
+            Lien du profil <span class="add-optional">(op.gg, u.gg…)</span>
+          </label>
+          <input
+            type="url"
+            id="addProfileUrlInput"
+            class="search-input add-input add-input-mono"
+            placeholder="https://www.op.gg/summoners/euw/…"
+            autocomplete="off"
+            maxlength="500"
+          />
+        </div>
+
+        <div class="add-field-group">
+          <label class="add-field-label" for="addTeamSelect">Équipe</label>
+          <select id="addTeamSelect" class="search-input add-select">
+            <option value="">— Aucune équipe —</option>
+            <option value="Équipe 1">Équipe 1</option>
+            <option value="Équipe 2">Équipe 2</option>
+            <option value="Équipe 3">Équipe 3</option>
+          </select>
+        </div>
+
+        <div class="add-field-group">
+          <label class="add-field-label">Photo de profil <span class="add-optional">(optionnel)</span></label>
+          <div class="avatar-upload-wrap">
+            <label class="avatar-upload-area" for="addAvatarInput">
+              <img id="avatarPreview" class="avatar-preview" hidden alt="preview" />
+              <span id="avatarUploadPlaceholder" class="avatar-upload-placeholder">📷</span>
+            </label>
+            <input type="file" id="addAvatarInput" accept="image/*" class="avatar-file-input" />
+            <span class="avatar-upload-hint">Cliquer pour choisir une image.<br/>Recadrée automatiquement en carré.</span>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="add-actions">
+        <button class="add-submit-btn" id="addSubmitBtn">Ajouter</button>
+      </div>
+      <p class="add-error" id="addError" hidden></p>
+    </div>
+  </div>
+
+  <!-- ======== TEAMS MODAL ======== -->
+  <div class="modal-overlay" id="teamsModalOverlay" hidden>
+    <div class="modal add-modal" role="dialog" aria-modal="true">
+      <button class="modal-close" id="teamsModalClose" aria-label="Fermer">✕</button>
+      <h2 class="add-modal-title">🏷️ Noms des équipes</h2>
+
+      <div class="add-form-fields" style="margin-top:16px;">
+        <div class="add-field-group">
+          <label class="add-field-label" for="teamName1Input">Équipe 1</label>
+          <input type="text" id="teamName1Input" class="search-input add-input" maxlength="50" autocomplete="off" />
+        </div>
+        <div class="add-field-group">
+          <label class="add-field-label" for="teamName2Input">Équipe 2</label>
+          <input type="text" id="teamName2Input" class="search-input add-input" maxlength="50" autocomplete="off" />
+        </div>
+        <div class="add-field-group">
+          <label class="add-field-label" for="teamName3Input">Équipe 3</label>
+          <input type="text" id="teamName3Input" class="search-input add-input" maxlength="50" autocomplete="off" />
+        </div>
+      </div>
+
+      <div class="add-actions">
+        <button class="add-submit-btn" id="teamsSubmitBtn">Enregistrer</button>
+      </div>
+      <p class="add-error" id="teamsError" hidden></p>
+    </div>
+  </div>
+
+  <!-- ======== ADMIN LOGIN MODAL ======== -->
+  <div class="modal-overlay" id="adminLoginOverlay" hidden>
+    <div class="modal add-modal" role="dialog" aria-modal="true">
+      <button class="modal-close" id="adminLoginClose" aria-label="Fermer">✕</button>
+      <h2 class="add-modal-title">🔐 Accès Admin</h2>
+
+      <div class="add-form-fields" style="margin-top:16px;">
+        <div class="add-field-group">
+          <label class="add-field-label" for="adminPasswordInput">Mot de passe</label>
+          <input
+            type="password"
+            id="adminPasswordInput"
+            class="search-input add-input"
+            placeholder="••••••••"
+            autocomplete="current-password"
+          />
+        </div>
+      </div>
+
+      <div class="add-actions">
+        <button class="add-submit-btn" id="adminLoginSubmit">Connexion</button>
+      </div>
+      <p class="add-error" id="adminLoginError" hidden>Mot de passe incorrect.</p>
+    </div>
+  </div>
+
+  <!-- ======== EDIT PLAYER MODAL ======== -->
+  <div class="modal-overlay" id="editModalOverlay" hidden>
+    <div class="modal add-modal" role="dialog" aria-modal="true">
+      <button class="modal-close" id="editModalClose" aria-label="Fermer">✕</button>
+      <h2 class="add-modal-title">✏️ Modifier le joueur</h2>
+
+      <div class="add-form-fields">
+
+        <div class="add-field-group">
+          <label class="add-field-label" for="editDisplayNameInput">
+            Nom affiché <span class="add-required">*</span>
+          </label>
+          <input
+            type="text"
+            id="editDisplayNameInput"
+            class="search-input add-input"
+            placeholder="Ex : Neymar, Lev…"
+            autocomplete="off"
+            maxlength="100"
+          />
+        </div>
+
+        <div class="add-field-group">
+          <label class="add-field-label" for="editRiotIdInput">
+            Compte Riot (Nom#TAG) <span class="add-optional">(laisser vide = pas de changement)</span>
+          </label>
+          <input
+            type="text"
+            id="editRiotIdInput"
+            class="search-input add-input add-input-mono"
+            placeholder="pzzzang3#2173"
+            autocomplete="off"
+            spellcheck="false"
+            maxlength="80"
+          />
+        </div>
+
+        <div class="add-field-group">
+          <label class="add-field-label" for="editProfileUrlInput">
+            Lien du profil <span class="add-optional">(op.gg, u.gg…)</span>
+          </label>
+          <input
+            type="url"
+            id="editProfileUrlInput"
+            class="search-input add-input add-input-mono"
+            placeholder="https://www.op.gg/summoners/euw/…"
+            autocomplete="off"
+            maxlength="500"
+          />
+        </div>
+
+        <div class="add-field-group">
+          <label class="add-field-label" for="editTeamSelect">Équipe</label>
+          <select id="editTeamSelect" class="search-input add-select">
+            <option value="">— Aucune équipe —</option>
+            <option value="Équipe 1">Équipe 1</option>
+            <option value="Équipe 2">Équipe 2</option>
+            <option value="Équipe 3">Équipe 3</option>
+          </select>
+        </div>
+
+        <div class="add-field-group">
+          <label class="add-field-label">Photo de profil</label>
+          <div class="avatar-upload-wrap">
+            <label class="avatar-upload-area" for="editAvatarInput">
+              <img id="editAvatarPreview" class="avatar-preview" hidden alt="preview" />
+              <span id="editAvatarPlaceholder" class="avatar-upload-placeholder">📷</span>
+            </label>
+            <input type="file" id="editAvatarInput" accept="image/*" class="avatar-file-input" />
+            <div style="display:flex;flex-direction:column;gap:6px;">
+              <span class="avatar-upload-hint">Cliquer pour choisir une nouvelle image.</span>
+              <label class="add-field-label" style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:4px;text-transform:none;letter-spacing:0;">
+                <input type="checkbox" id="editClearAvatar" style="accent-color:var(--loss);cursor:pointer;" />
+                Supprimer la photo actuelle
+              </label>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="add-actions">
+        <button class="add-submit-btn" id="editSubmitBtn">Enregistrer</button>
+      </div>
+      <p class="add-error" id="editError" hidden></p>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <script src="script.js?v=11"></script>
+</body>
+</html>
