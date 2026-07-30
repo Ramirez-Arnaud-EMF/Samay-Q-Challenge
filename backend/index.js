@@ -148,6 +148,36 @@ app.get('/api/players', async (req, res) => {
 });
 
 /**
+ * Streak — 10 dernières parties (champion + résultat) pour tous les joueurs.
+ * Utilisé par la colonne STREAK du classement.
+ */
+app.get('/api/players/streaks', async (_req, res) => {
+  const sql = `
+    SELECT player_id, result, champion
+    FROM (
+      SELECT player_id, result, champion,
+             ROW_NUMBER() OVER (PARTITION BY player_id ORDER BY played_at DESC) AS rn
+      FROM matches
+    ) ranked
+    WHERE rn <= 10
+    ORDER BY player_id, rn
+  `;
+  try {
+    const { rows } = await pool.query(sql);
+    // Regroupe par player_id : { [id]: [{result, champion}, ...] }
+    const byPlayer = {};
+    for (const r of rows) {
+      if (!byPlayer[r.player_id]) byPlayer[r.player_id] = [];
+      byPlayer[r.player_id].push({ result: r.result, champion: r.champion });
+    }
+    res.json(byPlayer);
+  } catch (err) {
+    console.error('[GET /api/players/streaks]', err.message);
+    res.status(500).json({ error: 'Erreur base de données' });
+  }
+});
+
+/**
  * Historique des 10 dernières parties d'un joueur.
  * [RIOT-API] Remplacer par :
  *   GET /lol/match/v5/matches/by-puuid/{puuid}/ids?count=10
@@ -205,6 +235,53 @@ app.get('/api/matches', async (req, res) => {
     res.json(rows);
   } catch (err) {
     console.error('[GET /api/matches]', err.message);
+    res.status(500).json({ error: 'Erreur base de données' });
+  }
+});
+
+/**
+ * Hall of Fame — records sur une seule partie.
+ */
+app.get('/api/hall-of-fame', async (req, res) => {
+  const sel = `
+    m.id, m.result, m.champion, m.role,
+    m.kills, m.deaths, m.assists, m.cs, m.duration, m.lp_change, m.played_at,
+    p.id AS player_id,
+    COALESCE(p.display_name, p.name) AS player_name,
+    p.avatar_custom
+  `;
+  const durSec = `(
+    COALESCE(NULLIF(SPLIT_PART(m.duration,'m',1),'')::int, 0) * 60 +
+    COALESCE(NULLIF(REPLACE(SPLIT_PART(m.duration,'m',2),'s',''),'')::int, 0)
+  )`;
+  const cats = [
+    { key: 'most_kills',    icon: '⚔️',  label: 'Plus de kills',         order: 'm.kills DESC NULLS LAST' },
+    { key: 'most_deaths',   icon: '💀',  label: 'Plus de morts',         order: 'm.deaths DESC NULLS LAST' },
+    { key: 'most_assists',  icon: '🤝',  label: "Plus d'assists",         order: 'm.assists DESC NULLS LAST' },
+    { key: 'most_cs',       icon: '🌾',  label: 'Plus de CS',             order: 'm.cs DESC NULLS LAST' },
+    { key: 'longest',       icon: '⏱️',  label: 'Partie la plus longue', order: `${durSec} DESC` },
+    { key: 'best_lp',       icon: '📈',  label: 'Plus gros gain LP',     order: 'm.lp_change DESC NULLS LAST', where: 'm.lp_change IS NOT NULL' },
+    { key: 'worst_lp',      icon: '📉',  label: 'Plus grosse perte LP',  order: 'm.lp_change ASC NULLS LAST',  where: 'm.lp_change IS NOT NULL' },
+    { key: 'best_kda_game', icon: '🏅',  label: 'Meilleur KDA en 1 game',order: `(m.kills + m.assists)::numeric / NULLIF(m.deaths,0) DESC NULLS LAST` },
+  ];
+
+  try {
+    const results = await Promise.all(cats.map(async (c) => {
+      const where = c.where ? `AND ${c.where}` : '';
+      const { rows } = await pool.query(`
+        SELECT ${sel}
+        FROM matches m
+        JOIN players p ON m.player_id = p.id
+        WHERE m.kills IS NOT NULL ${where}
+        ORDER BY ${c.order}
+        LIMIT 1
+      `);
+      if (!rows.length) return null;
+      return { key: c.key, icon: c.icon, label: c.label, match: rows[0] };
+    }));
+    res.json(results.filter(Boolean));
+  } catch (err) {
+    console.error('[GET /api/hall-of-fame]', err.message);
     res.status(500).json({ error: 'Erreur base de données' });
   }
 });
@@ -402,7 +479,10 @@ app.get('/api/stats', async (_req, res) => {
           CASE WHEN m.total_pings > 0 THEN m.total_pings::numeric END
         )), 0)::int                                                         AS avg_pings,
         COALESCE(SUM(CASE WHEN m.surrendered THEN 1 ELSE 0 END), 0)::int    AS surrendered_games,
-        COUNT(m.id)::int                                                    AS match_count
+        COUNT(m.id)::int                                                    AS match_count,
+        COALESCE(ROUND(AVG(
+          (m.kills + m.assists)::numeric / NULLIF(m.deaths, 0)
+        )::numeric, 2), 0)::numeric                                         AS avg_kda
       FROM players p
       LEFT JOIN matches m ON m.player_id = p.id
       GROUP BY p.id, p.display_name, p.name, p.avatar, p.avatar_custom,
@@ -412,10 +492,15 @@ app.get('/api/stats', async (_req, res) => {
 
     const totalGames  = rows.reduce((s, p) => s + Number(p.games), 0);
     const totalKills  = rows.reduce((s, p) => s + Number(p.total_kills), 0);
+    const totalDeaths   = rows.reduce((s, p) => s + Number(p.total_deaths), 0);
+    const totalAssists  = rows.reduce((s, p) => s + Number(p.total_assists), 0);
     const matchesStored = rows.reduce((s, p) => s + Number(p.match_count), 0);
     const avgKillsGlobal = matchesStored > 0
       ? (totalKills / matchesStored).toFixed(1)
       : '0.0';
+    const avgKdaGlobal = totalDeaths > 0
+      ? ((totalKills + totalAssists) / totalDeaths).toFixed(2)
+      : '0.00';
 
     const teamMap = {};
     rows.forEach((p) => {
@@ -434,7 +519,7 @@ app.get('/api/stats', async (_req, res) => {
         : 0,
     })).sort((a, b) => b.winrate - a.winrate);
 
-    res.json({ global: { totalGames, totalKills, avgKillsGlobal, matchesStored }, players: rows, teams });
+    res.json({ global: { totalGames, totalKills, avgKillsGlobal, avgKdaGlobal, matchesStored }, players: rows, teams });
   } catch (err) {
     console.error('[GET /api/stats]', err.message);
     res.status(500).json({ error: 'Erreur base de données' });
@@ -456,9 +541,11 @@ app.get('/api/stats/lp-progression', async (_req, res) => {
     const playerLptNow  = Object.fromEntries(players.map(p => [p.id, lpt(p.tier, p.division, p.lp)]));
     const playerTeamNow = Object.fromEntries(players.map(p => [p.id, p.team || '']));
 
-    // Parties triées par date ASC avec lp_change connu
+    // Parties triées par date ASC avec lp_change connu — on inclut played_at
     const { rows } = await pool.query(`
-      SELECT m.player_id, p.display_name, COALESCE(m.team, p.team) AS team, m.lp_change
+      SELECT m.player_id, p.display_name, COALESCE(m.team, p.team) AS team,
+             m.lp_change,
+             to_char(m.played_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day
       FROM matches m
       JOIN players p ON m.player_id = p.id
       WHERE m.lp_change IS NOT NULL
@@ -469,6 +556,7 @@ app.get('/api/stats/lp-progression', async (_req, res) => {
     const sumPlayer = {};
     for (const r of rows) sumPlayer[r.player_id] = (sumPlayer[r.player_id] || 0) + Number(r.lp_change);
 
+    // Accumulation par joueur avec date — on garde le dernier LPT de chaque jour
     const playerMap = new Map();
     for (const r of rows) {
       if (!playerMap.has(r.player_id)) {
@@ -505,11 +593,16 @@ app.get('/api/stats/lp-progression', async (_req, res) => {
       if (!teamMap.has(team)) {
         const cur   = teamLptNow[team] ?? 0;
         const start = cur - (sumTeam[team] || 0);
-        teamMap.set(team, { name: team, running: start, data: [Math.round(start)] });
+        teamMap.set(team, { name: team, running: start, data: [] });
       }
       const t = teamMap.get(team);
       t.running += Number(r.lp_change);
-      t.data.push(Math.round(t.running));
+      const last = t.data[t.data.length - 1];
+      if (last && last.date === r.day) {
+        last.lp = Math.round(t.running);
+      } else {
+        t.data.push({ date: r.day, lp: Math.round(t.running) });
+      }
     }
 
     res.json({

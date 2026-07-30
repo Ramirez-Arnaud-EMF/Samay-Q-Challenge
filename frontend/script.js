@@ -173,6 +173,7 @@ function renderPlayers(list) {
 
     const tr = document.createElement('tr');
     tr.dataset.id = player.id;
+    if (player.team) tr.classList.add(`row-team-${teamColorClass(player.team)}`);
 
     tr.innerHTML = `
       <td>
@@ -188,6 +189,7 @@ function renderPlayers(list) {
         </div>
       </td>
       <td class="account-cell">${accountCell}</td>
+      <td class="team-cell">${teamCell}</td>
       <td>
         <div class="tier-badge">
           <span class="tier-dot dot-${cssKey}"></span>
@@ -209,13 +211,42 @@ function renderPlayers(list) {
           <div class="wr-bar" style="width:${wr}%; background:${wr >= 55 ? 'var(--win)' : wr < 45 ? 'var(--loss)' : 'var(--neutral)'}"></div>
         </div>
       </td>
-      <td class="team-cell">${teamCell}</td>
+      <td class="streak-cell" data-id="${player.id}"><span class="streak-loading">…</span></td>
       <td class="live-cell" data-id="${player.id}"><span class="live-dash">—</span></td>
     `;
 
     tr.addEventListener('click', () => openModal(player));
     tbody.appendChild(tr);
   });
+}
+
+/* ============================================================
+   STREAK — colonne des 10 dernières parties
+   ============================================================ */
+
+async function loadStreaks() {
+  try {
+    const data = await apiFetch('/api/players/streaks');
+    Object.entries(data).forEach(([id, matches]) => {
+      document.querySelectorAll(`.streak-cell[data-id="${id}"]`).forEach((cell) => {
+        if (!matches || matches.length === 0) {
+          cell.innerHTML = '<span class="live-dash">—</span>';
+          return;
+        }
+        cell.innerHTML = `<div class="streak-icons">${matches.map((m) => `
+          <div class="streak-icon-wrap ${m.result === 'win' ? 'streak-win' : 'streak-loss'}">
+            <img
+              class="streak-champ-img"
+              src="${champImgUrl(m.champion)}"
+              alt="${escHtml(m.champion)}"
+              title="${escHtml(m.champion)}"
+              onerror="this.style.visibility='hidden'"
+            />
+          </div>`).join('')}
+        </div>`;
+      });
+    });
+  } catch { /* silencieux — feature optionnelle */ }
 }
 
 /* ============================================================
@@ -265,6 +296,7 @@ async function loadPlayers() {
     const players = await apiFetch(`/api/players?${params}`);
     renderPlayers(players);
     loadLiveGames();
+    loadStreaks();
   } catch (err) {
     renderError(err.message);
   }
@@ -1030,28 +1062,56 @@ function renderLpChart(mode, lpData) {
   if (!source || source.length === 0) {
     destroyChart('chartLpProgression');
     const wrap = document.querySelector('.lp-chart-container');
-    if (wrap) wrap.innerHTML = '<div class="lp-no-data">Pas encore de donn\u00e9es LP track\u00e9es.</div>';
+    if (wrap) wrap.innerHTML = '<div class="lp-no-data">Pas encore de données LP trackées.</div>';
     return;
   }
-  let maxLen = 0;
-  const datasets = source.map((item, i) => {
-    maxLen = Math.max(maxLen, item.data.length);
-    const col = LP_LINE_COLORS[i % LP_LINE_COLORS.length];
-    return {
-      label: item.name,
-      data: item.data,
-      borderColor: col.line,
-      backgroundColor: 'transparent',
-      borderWidth: 2,
-      pointRadius: 3,
-      pointBackgroundColor: '#fff',
-      pointBorderColor: col.line,
-      pointBorderWidth: 2,
-      tension: 0.3,
-      fill: false,
-    };
-  });
-  const labels = Array.from({ length: maxLen }, (_, i) => i);
+
+  const byDay = mode === 'team';
+
+  let labels, datasets;
+
+  if (byDay) {
+    // Mode équipe : une colonne par jour
+    const dateSet = new Set();
+    source.forEach(item => item.data.forEach(d => dateSet.add(d.date)));
+    const allDates = [...dateSet].sort();
+
+    labels = allDates.map(d => { const [, m, day] = d.split('-'); return `${day}/${m}`; });
+
+    datasets = source.map((item, i) => {
+      const byDate = Object.fromEntries(item.data.map(d => [d.date, d.lp]));
+      let last = null;
+      const pts = allDates.map(date => {
+        if (byDate[date] !== undefined) last = byDate[date];
+        return last;
+      });
+      const col = LP_LINE_COLORS[i % LP_LINE_COLORS.length];
+      return {
+        label: item.name, data: pts,
+        borderColor: col.line, backgroundColor: 'transparent',
+        borderWidth: 2, pointRadius: 3, pointBackgroundColor: '#fff',
+        pointBorderColor: col.line, pointBorderWidth: 2,
+        tension: 0.3, fill: false, spanGaps: true,
+      };
+    });
+  } else {
+    // Mode joueur : une colonne par partie
+    let maxLen = 0;
+    source.forEach(item => { maxLen = Math.max(maxLen, item.data.length); });
+    labels = Array.from({ length: maxLen }, (_, i) => i);
+
+    datasets = source.map((item, i) => {
+      const col = LP_LINE_COLORS[i % LP_LINE_COLORS.length];
+      return {
+        label: item.name, data: item.data,
+        borderColor: col.line, backgroundColor: 'transparent',
+        borderWidth: 2, pointRadius: 3, pointBackgroundColor: '#fff',
+        pointBorderColor: col.line, pointBorderWidth: 2,
+        tension: 0.3, fill: false,
+      };
+    });
+  }
+
   makeChart('chartLpProgression', {
     type: 'line',
     data: { labels, datasets },
@@ -1060,49 +1120,53 @@ function renderLpChart(mode, lpData) {
       maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend: {
-          display: true,
-          position: 'top',
-          labels: {
-            color: '#dce0f0',
-            font: { family: "'Barlow Condensed', sans-serif", size: 12, weight: '700' },
-            usePointStyle: true,
-            padding: 20,
-            boxWidth: 8,
-          },
-        },
+        legend: { display: false },
         tooltip: {
-          backgroundColor: '#0c1020',
-          titleColor: '#dce0f0',
-          bodyColor: '#6880a0',
-          borderColor: '#263650',
-          borderWidth: 1,
+          backgroundColor: '#0c1020', titleColor: '#dce0f0',
+          bodyColor: '#6880a0', borderColor: '#263650', borderWidth: 1,
           callbacks: {
-            title: (ctx) => `Partie ${ctx[0].label}`,
-            label: (ctx) => ` ${ctx.dataset.label}: ${ctx.raw > 0 ? '+' : ''}${ctx.raw} LP`,
+            title: (ctx) => byDay ? ctx[0].label : `Partie ${ctx[0].label}`,
+            label: (ctx) => ctx.raw != null ? ` ${ctx.dataset.label}: ${ctx.raw} LPT` : null,
           },
         },
       },
       scales: {
         x: {
-          ticks: { color: '#6880a0', font: { family: "'Barlow', sans-serif", size: 11 }, maxTicksLimit: 15 },
+          ticks: { color: '#6880a0', font: { family: "'Barlow', sans-serif", size: 11 }, maxTicksLimit: byDay ? 999 : 15, maxRotation: byDay ? 45 : 0 },
           grid: { color: '#141c2e' },
         },
         y: {
-          ticks: {
-            color: '#6880a0',
-            font: { family: "'Barlow', sans-serif", size: 11 },
-            callback: (v) => `${v > 0 ? '+' : ''}${v}`,
-          },
+          ticks: { color: '#6880a0', font: { family: "'Barlow', sans-serif", size: 11 }, callback: (v) => `${v}` },
           grid: { color: '#141c2e' },
         },
       },
     },
   });
+
+  // Légende HTML custom
+  const legendEl = document.getElementById('lpLegend');
+  if (legendEl) {
+    legendEl.innerHTML = datasets.map((ds, i) => `
+      <button class="lp-legend-item" data-index="${i}">
+        <span class="lp-legend-dot" style="background:${ds.borderColor};box-shadow:0 0 0 2px #000,0 0 0 3px ${ds.borderColor}"></span>
+        <span class="lp-legend-name">${escHtml(ds.label)}</span>
+      </button>`).join('');
+    legendEl.querySelectorAll('.lp-legend-item').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.index, 10);
+        const chart = _charts['chartLpProgression'];
+        if (!chart) return;
+        const meta = chart.getDatasetMeta(idx);
+        meta.hidden = !meta.hidden;
+        chart.update();
+        btn.classList.toggle('lp-legend-hidden', meta.hidden);
+      });
+    });
+  }
 }
 
 function rankCard(icon, title, sorted, valueFn, colorClass) {
-  const items = sorted.slice(0, 5).map((p, i) => `
+  const items = sorted.map((p, i) => `
     <li class="srank-item ${i === 0 ? 'srank-first' : ''}">
       <span class="srank-num">${i + 1}</span>
       <span class="srank-name">${escHtml(p.display_name)}</span>
@@ -1151,6 +1215,7 @@ function renderStats(data, lpData) {
 
   const byKillsTotal  = [...players].sort((a, b) => Number(b.total_kills)      - Number(a.total_kills));
   const byKillsAvg    = [...players].filter(p => Number(p.games) > 0).sort((a, b) => Number(b.avg_kills)    - Number(a.avg_kills));
+  const byKdaAvg      = [...players].filter(p => Number(p.match_count) > 0).sort((a, b) => Number(b.avg_kda) - Number(a.avg_kda));
   const byDeathsTotal = [...players].sort((a, b) => Number(b.total_deaths)     - Number(a.total_deaths));
   const byDeathsAvgAsc= [...players].filter(p => Number(p.games) > 0).sort((a, b) => Number(a.avg_deaths)   - Number(b.avg_deaths));
   const byFirstBloods = [...players].sort((a, b) => Number(b.first_bloods)     - Number(a.first_bloods));
@@ -1171,11 +1236,6 @@ function renderStats(data, lpData) {
         <div class="stats-global-lbl">Parties (total ranked)</div>
       </div>
       <div class="stats-global-card">
-        <div class="stats-global-icon">📊</div>
-        <div class="stats-global-val">${Number(g.matchesStored).toLocaleString()}</div>
-        <div class="stats-global-lbl">Parties trackées</div>
-      </div>
-      <div class="stats-global-card">
         <div class="stats-global-icon">⚔️</div>
         <div class="stats-global-val">${Number(g.totalKills).toLocaleString()}</div>
         <div class="stats-global-lbl">Kills au total</div>
@@ -1185,6 +1245,11 @@ function renderStats(data, lpData) {
         <div class="stats-global-val">${g.avgKillsGlobal}</div>
         <div class="stats-global-lbl">Kills / partie (moy.)</div>
       </div>
+      <div class="stats-global-card">
+        <div class="stats-global-icon">📈</div>
+        <div class="stats-global-val">${g.avgKdaGlobal}</div>
+        <div class="stats-global-lbl">KDA (moy.)</div>
+      </div>
     </div>
 
     <!-- Rankings -->
@@ -1192,6 +1257,7 @@ function renderStats(data, lpData) {
     <div class="stats-rankings-grid">
       ${rankCard('⚔️', 'Plus de kills',       byKillsTotal,   p => `${p.total_kills}`, 'pos')}
       ${rankCard('🎯', 'Kills / partie',       byKillsAvg,     p => `${Number(p.avg_kills).toFixed(1)}/g`, 'pos')}
+      ${rankCard('📈', 'Meilleur KDA',         byKdaAvg,       p => `${Number(p.avg_kda).toFixed(2)}`, 'pos')}
       ${rankCard('💀', 'Plus de morts',        byDeathsTotal,  p => `${p.total_deaths}`, 'neg')}
       ${rankCard('😇', 'Moins de morts/g',     byDeathsAvgAsc, p => `${Number(p.avg_deaths).toFixed(1)}/g`, 'pos')}
       ${rankCard('🩸', 'First Bloods',          byFirstBloods,  p => `${p.first_bloods} FB`, 'pos')}
@@ -1209,9 +1275,16 @@ function renderStats(data, lpData) {
         <button class="lp-mode-btn lp-mode-active" data-mode="team">Par équipe</button>
         <button class="lp-mode-btn" data-mode="player">Par joueur</button>
       </div>
+      <div id="lpLegend" class="lp-legend"></div>
       <div class="lp-chart-container">
         <canvas id="chartLpProgression"></canvas>
       </div>
+    </div>
+
+    <!-- Hall of Fame -->
+    <div class="stats-section-title">HALL OF FAME — RECORDS EN 1 PARTIE</div>
+    <div class="hof-grid" id="hofGrid">
+      <div style="color:var(--text-muted);font-size:13px;padding:12px">Chargement…</div>
     </div>
   `;
 
@@ -1227,6 +1300,59 @@ function renderStats(data, lpData) {
   });
 }
 
+function renderHallOfFame(records) {
+  const grid = document.getElementById('hofGrid');
+  if (!grid) return;
+  if (!records.length) {
+    grid.innerHTML = `<div style="color:var(--text-muted);font-size:13px;padding:12px">Aucune donnée.</div>`;
+    return;
+  }
+  grid.innerHTML = records.map(r => {
+    const m = r.match;
+    const isWin = m.result === 'win';
+    const resultCol = isWin ? 'var(--win)' : 'var(--loss)';
+    const resultLbl = isWin ? 'VIC.' : 'DÉF.';
+    const lpStr = m.lp_change != null
+      ? `<span class="hof-lp ${m.lp_change > 0 ? 'pos' : m.lp_change < 0 ? 'neg' : 'zero'}">${m.lp_change > 0 ? '+' : ''}${m.lp_change} LP</span>`
+      : '';
+    const kdaStr = m.deaths === 0
+      ? `<span style="color:var(--gold-light)">${m.kills}/${m.deaths}/${m.assists}</span>`
+      : `${m.kills}/${m.deaths}/${m.assists}`;
+    return `
+      <div class="hof-card" data-player-id="${m.player_id}">
+        <div class="hof-card-hd">
+          <span class="hof-icon">${r.icon}</span>
+          <span class="hof-label">${escHtml(r.label)}</span>
+        </div>
+        <div class="hof-body" style="border-left:3px solid ${resultCol}">
+          <img class="hof-champ-img" src="${champImgUrl(m.champion)}" alt="${escHtml(m.champion)}" onerror="this.style.visibility='hidden'" />
+          <div class="hof-info">
+            <div class="hof-champ-name">${escHtml(m.champion)}</div>
+            <div class="hof-champ-role">${escHtml(m.role || '')}</div>
+            <div class="hof-stats-row">
+              <span class="hof-kda">${kdaStr}</span>
+              ${m.cs ? `<span class="hof-sep">·</span><span class="hof-stat">${m.cs} CS</span>` : ''}
+              ${m.duration ? `<span class="hof-sep">·</span><span class="hof-stat">${escHtml(m.duration)}</span>` : ''}
+            </div>
+          </div>
+          <div class="hof-right">
+            <span class="hof-result" style="color:${resultCol}">${resultLbl}</span>
+            ${lpStr}
+          </div>
+        </div>
+        <div class="hof-player">— ${escHtml(m.player_name)}</div>
+      </div>`;
+  }).join('');
+
+  grid.querySelectorAll('.hof-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const pid = parseInt(card.dataset.playerId, 10);
+      const player = (state.players || []).find(p => p.id === pid);
+      if (player) openModal(player);
+    });
+  });
+}
+
 async function loadStats() {
   const container = document.getElementById('statsContent');
   container.innerHTML = `<div style="text-align:center;padding:64px;color:var(--text-muted)">Chargement…</div>`;
@@ -1237,6 +1363,8 @@ async function loadStats() {
     ]);
     renderStats(data, lpData);
     state.statsLoaded = true;
+    // Charger le Hall of Fame après le rendu
+    apiFetch('/api/hall-of-fame').then(renderHallOfFame).catch(() => {});
   } catch (err) {
     container.innerHTML = `<div style="text-align:center;padding:64px;color:var(--loss)">Erreur : ${escHtml(err.message)}</div>`;
   }
