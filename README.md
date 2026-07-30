@@ -42,7 +42,7 @@ The application automatically fetches data from the **Riot Games API** to keep e
 > _Main page — full player ranking with tier badges, LP, wins/losses, live game indicator, and team scores._
 
 <!-- Add your screenshot here -->
-![Leaderboard](docs/screenshots/leaderboard.png)
+![alt text](image.png)
 
 ---
 
@@ -51,7 +51,7 @@ The application automatically fetches data from the **Riot Games API** to keep e
 > _Per-player match history — champion, role, KDA, CS, duration, LP change, and result._
 
 <!-- Add your screenshot here -->
-![Match History](docs/screenshots/history.png)
+![alt text](image-1.png)
 
 ---
 
@@ -60,7 +60,9 @@ The application automatically fetches data from the **Riot Games API** to keep e
 > _Fun stats panel — top performers across categories like most wins, best winrate, most first bloods, most pings, and more._
 
 <!-- Add your screenshot here -->
-![Statistics](docs/screenshots/statistics.png)
+![alt text](image-2.png)
+![alt text](image-3.png)
+![alt text](image-4.png)
 
 ---
 
@@ -69,7 +71,7 @@ The application automatically fetches data from the **Riot Games API** to keep e
 > _Click on any player to see their full profile: rank progression, recent games, and personal stats._
 
 <!-- Add your screenshot here -->
-![Player Detail](docs/screenshots/player-detail.png)
+![alt text](image-5.png)
 
 ---
 
